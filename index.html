@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Poltronas · LS Tur</title>
+<style>
+:root{--bg:#f6f7f9;--fg:#1a1d21;--card:#fff;--line:#d5d9df;--free:#e8f3ff;--freeb:#3b82f6;--occ:#c9cdd3;--sel:#16a34a;--wc:#f1e3c0}
+@media(prefers-color-scheme:dark){:root{--bg:#14161a;--fg:#eceef1;--card:#1e2126;--line:#3a3f47;--free:#1b2c44;--occ:#3a3f47;--wc:#4a3f22}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,sans-serif;padding:16px;max-width:560px;margin-inline:auto}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:16px;margin:0 0 8px}.sub,.note{opacity:.7;font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+label{display:block;font-size:13px;opacity:.8;margin:8px 0 4px}
+input,select,button{font:inherit;width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);box-sizing:border-box}
+button.p{background:var(--sel);color:#fff;border:0;font-weight:600;margin-top:10px}button:disabled{opacity:.4}
+button.sm{width:auto;padding:6px 10px;font-size:13px}
+.bus{border:2px solid var(--line);border-radius:22px 22px 10px 10px;padding:12px 10px;margin-bottom:10px}
+.front{text-align:center;font-size:12px;opacity:.6;margin-bottom:8px}
+.row{display:grid;grid-template-columns:1fr 1fr 22px 1fr 1fr;gap:6px;margin-bottom:6px}
+.s{aspect-ratio:1;border-radius:8px;border:1.5px solid var(--freeb);background:var(--free);font-weight:600;font-size:14px;padding:0;width:100%}
+.s.o{background:var(--occ);border-color:var(--occ);opacity:.7;text-decoration:line-through}
+.s.x{background:var(--sel);border-color:var(--sel);color:#fff}
+.w{aspect-ratio:2/1;grid-column:span 2;background:var(--wc);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px}
+.stats{display:flex;gap:8px;margin:8px 0}.stats div{flex:1;text-align:center;background:var(--bg);border-radius:8px;padding:8px}.stats b{display:block;font-size:20px}
+.tr{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+.err{color:#dc2626;font-size:14px}
+</style></head><body>
+<div id="app">Carregando…</div>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-app-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-auth-compat.js"></script>
+<script>
+// ====== COLE AQUI A CONFIGURAÇÃO DO SEU FIREBASE (Configurações do projeto > Seus apps > Web) ======
+var CFG={apiKey:"AIzaSyC-oeb0ibkAXxoFi00AZvRV_aOIss4b1ss",authDomain:"ls-tur-poltronas.firebaseapp.com",projectId:"ls-tur-poltronas",appId:"1:563176792178:web:678ab3a43d4527633e62eb"};
+// ================================================================================================
+firebase.initializeApp(CFG);var db=firebase.firestore(),auth=firebase.auth(),TS=firebase.firestore.FieldValue.serverTimestamp;
+function mk(n,rows,tail){var r=[],k=n;for(var i=0;i<rows;i++){r.push([k,k+1,k+2,k+3]);k+=4}if(tail)r.push([k,k+1,'WC','WC']);return r}
+function mk3(n,rows){var r=[],k=n;for(var i=0;i<rows;i++){r.push([k,k+1,null,k+2]);k+=3}return r}
+var BUS={
+'42sl':{nome:'42 lugares · Semileito',decks:[{t:'',r:mk(1,10,1)}]},
+'46sl':{nome:'46 lugares · Semileito',decks:[{t:'',r:mk(1,11,1)}]},
+'50ex':{nome:'50 lugares · Executivo',decks:[{t:'',r:mk(1,12,1)}]},
+'54dd':{nome:'54 lugares · DD',decks:[{t:'Piso inferior · Leito',r:mk3(1,4)},{t:'Piso superior · Semileito',r:mk(13,10,1)}]},
+'56dd':{nome:'56 lugares · DD',decks:[{t:'Piso inferior · Leito',r:mk3(1,4)},{t:'Piso superior · Semileito',r:mk(13,11,1)}]}};
+function total(b){var n=0;BUS[b].decks.forEach(function(d){d.r.forEach(function(r){r.forEach(function(c){if(c!=='WC'&&c!==null)n++})})});return n}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+var A=document.getElementById('app'),Q=new URLSearchParams(location.search),VID=Q.get('v'),unsubs=[];
+function clear(){unsubs.forEach(function(u){u()});unsubs=[]}
+function mapHtml(b,occ,sel){var h='';BUS[b].decks.forEach(function(d){h+=(d.t?'<h2>'+d.t+'</h2>':'')+'<div class="bus"><div class="front">▲ frente / motorista</div>';
+d.r.forEach(function(r){h+='<div class="row">';r.forEach(function(c,i){if(i==2)h+='<span></span>';if(c===null){h+='<span></span>';return}if(c==='WC'){if(i==2)h+='<div class="w">WC</div>';return}
+h+='<button class="s'+(occ[c]?' o':'')+(sel===c?' x':'')+'" data-n="'+c+'">'+c+'</button>'});h+='</div>'});h+='</div>'});return h}
+function stats(b,occ){var o=Object.keys(occ).length,t=total(b);return '<div class="stats"><div><b>'+o+'</b>ocupadas</div><div><b>'+(t-o)+'</b>livres</div><div><b>'+t+'</b>total</div></div>'}
+
+/* ---------- CLIENTE ---------- */
+function clientView(){
+ db.doc('poltronas_viagens/'+VID).get().then(function(d){
+  if(!d.exists){A.innerHTML='<div class="card">Viagem não encontrada. Peça um novo link à LS Tur.</div>';return}
+  var v=d.data(),occ={},sel=null,msg='',done=false;
+  function draw(){
+   var free=total(v.onibus)-Object.keys(occ).length;
+   if(done){A.innerHTML='<div class="card"><h1>Poltrona '+done+' reservada ✅</h1><p>Obrigado! Sua poltrona está garantida na viagem <b>'+esc(v.nome)+'</b>.</p></div>';return}
+   A.innerHTML='<h1>Escolha sua poltrona</h1><p class="sub">LS Tur Viagens e Turismo · '+esc(v.nome)+'</p><div class="card">'+mapHtml(v.onibus,occ,sel)+
+   '<p class="note">'+free+' poltronas livres</p><label>Seu nome completo</label><input id="nm"><label>Seu WhatsApp (com DDD)</label><input id="tl" inputmode="tel">'+
+   '<button class="p" id="go">'+(sel?'Confirmar poltrona '+sel:'Toque em uma poltrona')+'</button><p class="err">'+msg+'</p></div>';
+   var n=document.getElementById('nm'),t=document.getElementById('tl');n.value=draw.n||'';t.value=draw.t||'';
+   n.oninput=function(){draw.n=n.value};t.oninput=function(){draw.t=t.value};
+   A.querySelectorAll('.s').forEach(function(b){b.onclick=function(){var k=+b.dataset.n;if(occ[k])return;sel=k;msg='';draw()}});
+   document.getElementById('go').onclick=function(){
+    if(!sel||n.value.trim().length<3||t.value.replace(/\D/g,'').length<10){msg='Escolha a poltrona e preencha nome e WhatsApp.';draw();return}
+    var bt=db.batch(),base='poltronas_viagens/'+VID;
+    bt.set(db.doc(base+'/ocupadas/'+sel),{t:TS()});
+    bt.set(db.doc(base+'/reservas/'+sel),{nome:n.value.trim(),tel:t.value.trim(),t:TS()});
+    bt.commit().then(function(){done=sel;draw()}).catch(function(){msg='Essa poltrona acabou de ser reservada. Escolha outra.';sel=null;draw()});
+   };
+  }
+  unsubs.push(db.collection('poltronas_viagens/'+VID+'/ocupadas').onSnapshot(function(s){occ={};s.forEach(function(x){occ[x.id]=1});if(sel&&occ[sel])sel=null;draw()}));
+ });
+}
+
+/* ---------- ADMIN ---------- */
+function loginView(m){A.innerHTML='<h1>LS Tur · Poltronas</h1><div class="card"><label>E-mail</label><input id="em" type="email"><label>Senha</label><input id="pw" type="password"><button class="p" id="li">Entrar</button><p class="err">'+(m||'')+'</p></div>';
+ document.getElementById('li').onclick=function(){auth.signInWithEmailAndPassword(document.getElementById('em').value,document.getElementById('pw').value).catch(function(){loginView('E-mail ou senha incorretos.')})}}
+function listView(){clear();
+ var opts=Object.keys(BUS).map(function(k){return '<option value="'+k+'">'+BUS[k].nome+'</option>'}).join('');
+ A.innerHTML='<h1>Viagens</h1><p class="sub"><a href="#" id="out">Sair</a></p><div class="card"><h2>Nova viagem</h2><label>Nome da viagem</label><input id="nn" placeholder="Ex.: Beto Carrero 12/12"><label>Ônibus</label><select id="nb">'+opts+'</select><button class="p" id="nv">Criar viagem</button></div><div id="tl"></div>';
+ document.getElementById('out').onclick=function(e){e.preventDefault();auth.signOut()};
+ document.getElementById('nv').onclick=function(){var n=document.getElementById('nn').value.trim();if(!n)return;db.collection('poltronas_viagens').add({nome:n,onibus:document.getElementById('nb').value,t:TS()});document.getElementById('nn').value=''};
+ unsubs.push(db.collection('poltronas_viagens').orderBy('t','desc').onSnapshot(function(s){var box=document.getElementById('tl');box.innerHTML='';
+  s.forEach(function(d){var v=d.data(),c=document.createElement('div');c.className='card';var link=location.origin+location.pathname+'?v='+d.id;
+   c.innerHTML='<h2>'+esc(v.nome)+'</h2><p class="sub">'+BUS[v.onibus].nome+'</p><div class="stats" id="st'+d.id+'"></div><button class="sm" data-c="'+link+'">Copiar link do cliente</button> <button class="sm" data-o="'+d.id+'">Abrir</button>';
+   box.appendChild(c);
+   db.collection('poltronas_viagens/'+d.id+'/ocupadas').onSnapshot(function(q){var o=q.size,t=total(v.onibus),el=document.getElementById('st'+d.id);if(el)el.innerHTML='<div><b>'+o+'</b>ocupadas</div><div><b>'+(t-o)+'</b>livres</div><div><b>'+t+'</b>total</div>'});
+  });
+  box.querySelectorAll('[data-c]').forEach(function(b){b.onclick=function(){navigator.clipboard.writeText(b.dataset.c);b.textContent='Copiado ✓'}});
+  box.querySelectorAll('[data-o]').forEach(function(b){b.onclick=function(){tripView(b.dataset.o)}});
+ }));}
+function tripView(id){clear();
+ db.doc('poltronas_viagens/'+id).get().then(function(d){var v=d.data(),occ={},res={};
+  function draw(){A.innerHTML='<p><a href="#" id="bk">← Voltar</a></p><h1>'+esc(v.nome)+'</h1><p class="sub">'+BUS[v.onibus].nome+'</p><div class="card">'+stats(v.onibus,occ)+mapHtml(v.onibus,occ,null)+'<p class="note">Toque numa livre para reservar manualmente; toque numa ocupada para liberar.</p></div><div class="card"><h2>Passageiros</h2>'+
+   Object.keys(res).sort(function(a,b){return a-b}).map(function(k){var r=res[k];return '<div class="tr"><span><b>'+k+'</b> · '+esc(r.nome)+'<br><span class="note">'+esc(r.tel)+'</span></span></div>'}).join('')+'</div>';
+   document.getElementById('bk').onclick=function(e){e.preventDefault();listView()};
+   A.querySelectorAll('.s').forEach(function(b){b.onclick=function(){var k=b.dataset.n,base='poltronas_viagens/'+id;
+    if(occ[k]){if(confirm('Liberar a poltrona '+k+'?')){var x=db.batch();x.delete(db.doc(base+'/ocupadas/'+k));x.delete(db.doc(base+'/reservas/'+k));x.commit()}}
+    else{var nome=prompt('Nome do passageiro na poltrona '+k+':');if(!nome)return;var y=db.batch();y.set(db.doc(base+'/ocupadas/'+k),{t:TS()});y.set(db.doc(base+'/reservas/'+k),{nome:nome,tel:'',t:TS()});y.commit()}}});}
+  unsubs.push(db.collection('poltronas_viagens/'+id+'/ocupadas').onSnapshot(function(s){occ={};s.forEach(function(x){occ[x.id]=1});draw()}));
+  unsubs.push(db.collection('poltronas_viagens/'+id+'/reservas').onSnapshot(function(s){res={};s.forEach(function(x){res[x.id]=x.data()});draw()}));
+ });}
+if(VID)clientView();else auth.onAuthStateChanged(function(u){u?listView():loginView()});
+</script></body></html>
