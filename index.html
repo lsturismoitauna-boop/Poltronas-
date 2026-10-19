@@ -38,8 +38,8 @@ var BUS={
 '42sl':{nome:'42 lugares · Semileito',decks:[{t:'',r:mk(1,10,1)}]},
 '46sl':{nome:'46 lugares · Semileito',decks:[{t:'',r:mk(1,11,1)}]},
 '50ex':{nome:'50 lugares · Executivo',decks:[{t:'',r:mk(1,12,1)}]},
-'54dd':{nome:'54 lugares · DD',decks:[{t:'Piso inferior · Leito',r:mk3(1,4)},{t:'Piso superior · Semileito',r:mk(13,10,1)}]},
-'56dd':{nome:'56 lugares · DD',decks:[{t:'Piso inferior · Leito',r:mk3(1,4)},{t:'Piso superior · Semileito',r:mk(13,11,1)}]}};
+'54dd':{nome:'54 lugares · DD',decks:[{t:'Piso superior · Semileito',r:mk(1,10,1)},{t:'Piso inferior · Leito',r:mk3(43,4)}]},
+'56dd':{nome:'56 lugares · DD',decks:[{t:'Piso superior · Semileito',r:mk(1,11,0)},{t:'Piso inferior · Leito',r:mk3(45,4)}]}};
 function total(b){var n=0;BUS[b].decks.forEach(function(d){d.r.forEach(function(r){r.forEach(function(c){if(c!=='WC'&&c!==null)n++})})});return n}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
 var A=document.getElementById('app'),Q=new URLSearchParams(location.search),VID=Q.get('v'),unsubs=[];
@@ -52,42 +52,55 @@ function stats(b,occ){var o=Object.keys(occ).length,t=total(b);return '<div clas
 /* ---------- CLIENTE ---------- */
 function norm(s){return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim()}
 function hid(v,n){return crypto.subtle.digest('SHA-256',new TextEncoder().encode(v+'|'+norm(n))).then(function(b){return Array.from(new Uint8Array(b)).map(function(x){return('0'+x.toString(16)).slice(-2)}).join('')})}
+function desc(b,n){var r=null;BUS[b].decks.forEach(function(d){d.r.forEach(function(row){row.forEach(function(c,i){if(c===n)r=(i==0||i==3?'janela':'corredor')+(d.t?' · '+d.t.split(' · ')[0].toLowerCase():'')})})});return r}
 function clientView(){
  var base='poltronas_viagens/'+VID;
  db.doc(base).get().then(function(d){
   if(!d.exists){A.innerHTML='<div class="card">Viagem não encontrada. Peça um novo link à LS Tur.</div>';return}
-  var v=d.data(),occ={},sel=null,msg='',done=false,who=null,F={n:'',t:''};
+  var v=d.data(),occ={},sel=null,msg='',who=null,nome='',done=0,ja=0,mine=[],F={n:'',t:''},first=true;
   function head(){return '<h1>Escolha sua poltrona</h1><p class="sub">LS Tur Viagens e Turismo · '+esc(v.nome)+'</p>'}
+  function minebox(){return mine.length?'<div class="card"><h2>Poltronas já escolhidas agora</h2>'+mine.map(function(m){return '<div class="tr"><span>'+esc(m.n)+'</span><b>poltrona '+m.s+'</b></div>'}).join('')+'</div>':''}
+  function again(){who=null;nome='';sel=null;done=0;ja=0;msg='';F.n='';draw()}
   function draw(){
-   if(done){A.innerHTML='<div class="card"><h1>Poltrona '+done+' reservada ✅</h1><p>Obrigado! Sua poltrona está garantida na viagem <b>'+esc(v.nome)+'</b>.</p></div>';return}
+   if(done){
+    A.innerHTML=head()+'<div class="card"><h2>Poltrona '+done+' reservada ✅</h2><p><b>'+esc(nome)+'</b>, sua poltrona é a <b>'+done+'</b> ('+desc(v.onibus,done)+').</p>'+mapHtml(v.onibus,occ,done)+'<button class="p" id="ot">Escolher poltrona de outro passageiro</button><button id="sh" style="margin-top:8px">Compartilhar no WhatsApp</button></div>'+minebox();
+    document.getElementById('ot').onclick=again;
+    document.getElementById('sh').onclick=function(){var t='Poltrona reservada na viagem '+v.nome+': '+mine.map(function(m){return m.n+' - poltrona '+m.s}).join('; ')+'.';window.open('https://wa.me/?text='+encodeURIComponent(t))};
+    return}
+   if(ja){
+    A.innerHTML=head()+'<div class="card"><h2>Você já escolheu a poltrona '+ja+'</h2><p><b>'+esc(nome)+'</b>: poltrona <b>'+ja+'</b> ('+desc(v.onibus,ja)+'). Ela está marcada em verde no mapa. Para trocar, fale com a LS Tur.</p>'+mapHtml(v.onibus,occ,ja)+'<button class="p" id="ot">Pesquisar outro passageiro</button></div>'+minebox();
+    document.getElementById('ot').onclick=again;return}
    if(v.lista&&!who){
-    A.innerHTML=head()+'<div class="card"><label>Digite seu nome completo</label><input id="nm"><button class="p" id="vf">Continuar</button><p class="err">'+msg+'</p></div>';
+    A.innerHTML=head()+'<div class="card"><label>Digite o nome completo do passageiro</label><input id="nm" autocomplete="off"><button class="p" id="vf">Continuar</button><p class="err">'+msg+'</p><p class="note">Pode escolher a poltrona de cada pessoa do seu grupo, uma de cada vez. Digite o nome completo, como no cadastro.</p></div>'+minebox();
     var n1=document.getElementById('nm');n1.value=F.n;n1.oninput=function(){F.n=n1.value};
+    n1.onkeydown=function(e){if(e.key==='Enter')document.getElementById('vf').click()};
     document.getElementById('vf').onclick=function(){
-     if(norm(F.n).length<3){msg='Digite seu nome completo.';draw();return}
+     if(norm(F.n).length<3){msg='Digite o nome completo.';draw();return}
      hid(VID,F.n).then(function(h){return db.doc(base+'/convidados/'+h).get().then(function(g){
-      if(!g.exists){msg='Não encontramos esse nome. Digite exatamente como no seu cadastro ou fale com a LS Tur.';draw();return}
-      if(g.data().seat){msg='Você já escolheu a poltrona '+g.data().seat+'. Para trocar, fale com a LS Tur.';draw();return}
+      if(!g.exists){msg='Não encontramos esse nome. Confira se digitou o nome completo, como no cadastro, ou fale com a LS Tur.';draw();return}
+      nome=F.n.trim();
+      if(g.data().seat){ja=+g.data().seat;draw();return}
       who=h;msg='';draw()})}).catch(function(){msg='Erro ao verificar. Tente novamente.';draw()});
     };
     return}
    var free=total(v.onibus)-Object.keys(occ).length;
-   A.innerHTML=head()+'<div class="card">'+mapHtml(v.onibus,occ,sel)+'<p class="note">'+free+' poltronas livres</p>'+(who?'':'<label>Seu nome completo</label><input id="nm"><label>Seu WhatsApp (com DDD)</label><input id="tl" inputmode="tel">')+'<button class="p" id="go">'+(sel?'Confirmar poltrona '+sel:'Toque em uma poltrona')+'</button><p class="err">'+msg+'</p></div>';
-   if(!who){var n2=document.getElementById('nm'),t2=document.getElementById('tl');n2.value=F.n;t2.value=F.t;n2.oninput=function(){F.n=n2.value};t2.oninput=function(){F.t=t2.value}}
+   A.innerHTML=head()+(who?'<div class="card"><p>Escolhendo a poltrona de: <b>'+esc(nome)+'</b></p><button class="sm" id="ch">Trocar passageiro</button></div>':'')+'<div class="card">'+mapHtml(v.onibus,occ,sel)+'<p class="note">'+free+' poltronas livres · cinza = ocupada</p><label>Ou digite o número da poltrona</label><input id="sn" inputmode="numeric">'+(who?'':'<label>Seu nome completo</label><input id="nm"><label>Seu WhatsApp (com DDD)</label><input id="tl" inputmode="tel">')+'<p><b>'+(sel?'Poltrona '+sel+' · '+desc(v.onibus,sel):'')+'</b></p><button class="p" id="go">'+(sel?'Confirmar poltrona '+sel:'Toque em uma poltrona')+'</button><p class="err">'+msg+'</p></div>'+minebox();
+   if(who)document.getElementById('ch').onclick=again;
+   else{var n2=document.getElementById('nm'),t2=document.getElementById('tl');n2.value=F.n;t2.value=F.t;n2.oninput=function(){F.n=n2.value};t2.oninput=function(){F.t=t2.value}}
+   document.getElementById('sn').onchange=function(e){var k=+e.target.value;if(!desc(v.onibus,k)){msg='Essa poltrona não existe neste ônibus.';draw();return}if(occ[k]){msg='A poltrona '+k+' já está ocupada.';draw();return}sel=k;msg='';draw()};
    A.querySelectorAll('.s').forEach(function(b){b.onclick=function(){var k=+b.dataset.n;if(occ[k])return;sel=k;msg='';draw()}});
    document.getElementById('go').onclick=function(){
     if(!sel||(!who&&(F.n.trim().length<3||F.t.replace(/\D/g,'').length<10))){msg=who?'Escolha uma poltrona.':'Escolha a poltrona e preencha nome e WhatsApp.';draw();return}
-    var bt=db.batch();
-    bt.set(db.doc(base+'/ocupadas/'+sel),{t:TS()});
-    if(who){bt.update(db.doc(base+'/convidados/'+who),{seat:sel,t:TS()});bt.set(db.doc(base+'/reservas/'+sel),{h:who,nome:F.n.trim(),t:TS()})}
-    else bt.set(db.doc(base+'/reservas/'+sel),{nome:F.n.trim(),tel:F.t.trim(),t:TS()});
-    bt.commit().then(function(){done=sel;draw()}).catch(function(){msg='Essa poltrona acabou de ser reservada. Escolha outra.';sel=null;draw()});
+    var bt=db.batch(),nm=who?nome:F.n.trim();
+    bt.set(db.doc(base+'/ocupadas/'+sel),who?{t:TS(),h:who}:{t:TS()});
+    if(who){bt.update(db.doc(base+'/convidados/'+who),{seat:String(sel),t:TS()});bt.set(db.doc(base+'/reservas/'+sel),{h:who,nome:nm,t:TS()})}
+    else bt.set(db.doc(base+'/reservas/'+sel),{nome:nm,tel:F.t.trim(),t:TS()});
+    bt.commit().then(function(){nome=nm;mine.push({n:nm,s:sel});done=sel;draw()}).catch(function(){msg='Essa poltrona acabou de ser reservada. Escolha outra.';sel=null;draw()});
    };
   }
-  unsubs.push(db.collection(base+'/ocupadas').onSnapshot(function(s){occ={};s.forEach(function(x){occ[x.id]=1});if(sel&&occ[sel])sel=null;draw()}));
+  unsubs.push(db.collection(base+'/ocupadas').onSnapshot(function(s){occ={};s.forEach(function(x){occ[x.id]=1});if(sel&&occ[sel])sel=null;if(first||who||!v.lista||done||ja)draw();first=false}));
  });
 }
-
 
 /* ---------- ADMIN ---------- */
 function loginView(m){A.innerHTML='<h1>LS Tur · Poltronas</h1><div class="card"><label>E-mail</label><input id="em" type="email"><label>Senha</label><input id="pw" type="password"><button class="p" id="li">Entrar</button><p class="err">'+(m||'')+'</p></div>';
@@ -109,37 +122,56 @@ function listView(){clear();
 function tripView(id){clear();
  var base='poltronas_viagens/'+id;
  db.doc(base).get().then(function(d){
-  var v=d.data(),occ={},res={},pas={},T='',M='';
+  var v=d.data(),occ={},res={},pas={},T='',M='',Q='',FC='',FS='',view=[];
   function imp(){
+   var skip=/^(colo|sem poltrona|n[aã]o)$/i;
    var rows=T.split(/\r?\n/).map(function(l){return l.split(/[;\t,]/).map(function(x){return x.trim().replace(/^"|"$/g,'')})}).filter(function(c){return c[0]});
    if(rows.length&&norm(rows[0][0])==='nome')rows.shift();
-   rows=rows.filter(function(c){return !/colo|sem poltrona|n[aã]o/i.test(c[2]||'')});
+   rows=rows.filter(function(c){return !c.some(function(x){return skip.test(x)})});
    if(!rows.length){M='Nenhum nome encontrado.';draw();return}
    Promise.all(rows.map(function(r){return hid(id,r[0])})).then(function(hs){
     return db.collection(base+'/convidados').get().then(function(q){
-     var ex={},add=[],rep=0,seen={};q.forEach(function(x){ex[x.id]=1});
-     hs.forEach(function(h,i){if(ex[h])return;if(seen[h]){rep++;return}seen[h]=1;add.push([h,rows[i]])});
+     var ex={},add=[],rep=0,seen={},upd=[];q.forEach(function(x){ex[x.id]=1});
+     hs.forEach(function(h,i){if(ex[h]){if(rows[i][2])upd.push([h,rows[i][2]]);return}if(seen[h]){rep++;return}seen[h]=1;add.push([h,rows[i]])});
      var jobs=[];
-     for(var i=0;i<add.length;i+=200){var bt=db.batch();add.slice(i,i+200).forEach(function(a){bt.set(db.doc(base+'/convidados/'+a[0]),{seat:null,t:TS()});bt.set(db.doc(base+'/passageiros/'+a[0]),{nome:a[1][0],tel:a[1][1]||'',t:TS()})});jobs.push(bt.commit())}
+     for(var i=0;i<add.length;i+=200){var bt=db.batch();add.slice(i,i+200).forEach(function(a){bt.set(db.doc(base+'/convidados/'+a[0]),{seat:null,t:TS()});bt.set(db.doc(base+'/passageiros/'+a[0]),{nome:a[1][0],tel:a[1][1]||'',cidade:a[1][2]||'',t:TS()})});jobs.push(bt.commit())}
+     for(var j=0;j<upd.length;j+=400){var bu=db.batch();upd.slice(j,j+400).forEach(function(u){bu.set(db.doc(base+'/passageiros/'+u[0]),{cidade:u[1]},{merge:true})});jobs.push(bu.commit())}
      jobs.push(db.doc(base).update({lista:true}));
-     return Promise.all(jobs).then(function(){var jaTinha=hs.length-add.length-rep;M=add.length+' importado(s)'+(rep?'; '+rep+' nome(s) repetido(s) ignorado(s)':'')+(jaTinha?'; '+jaTinha+' já estavam na lista':'')+'.';T='';draw()})})}).catch(function(){M='Erro ao importar.';draw()});
+     return Promise.all(jobs).then(function(){var ja=hs.length-add.length-rep;M=add.length+' importado(s)'+(rep?'; '+rep+' nome(s) repetido(s) ignorado(s)':'')+(ja?'; '+ja+' já estavam na lista (cidade atualizada quando informada)':'')+'.';T='';draw()})})}).catch(function(){M='Erro ao importar.';draw()});
+  }
+  function items(){
+   var by={};Object.keys(res).forEach(function(k){if(res[k].h)by[res[k].h]=k});
+   var L=Object.keys(pas).map(function(h){var p=pas[h];return{nome:p.nome,tel:p.tel||'',cid:p.cidade||'',seat:by[h]||'',emb:!!p.emb,h:h,ref:base+'/passageiros/'+h}});
+   Object.keys(res).forEach(function(k){var r=res[k];if(!r.h)L.push({nome:r.nome,tel:r.tel||'',cid:r.cidade||'',seat:k,emb:!!r.emb,h:'',ref:base+'/reservas/'+k})});
+   return L.sort(function(a,b){return a.nome.localeCompare(b.nome)});
+  }
+  function paint(){
+   var L=items(),box=document.getElementById('pl');if(!box)return;
+   var q=norm(Q);
+   view=L.filter(function(i){return (!FC||(i.cid||'Sem cidade')===FC)&&(!FS||(FS==='e'?i.emb:!i.emb))&&(!q||norm(i.nome).indexOf(q)>-1)});
+   box.innerHTML=view.map(function(i,n){return '<div class="tr"><span>'+esc(i.nome)+'<br><span class="note">'+esc(i.cid||'sem cidade')+(i.seat?' · poltrona '+i.seat:' · sem poltrona')+(i.tel?' · '+esc(i.tel):'')+'</span></span><span><button class="sm" data-i="'+n+'">'+(i.emb?'✅ Embarcou':'Marcar')+'</button>'+(i.seat?' <button class="sm" data-l="'+n+'">Liberar poltrona</button>':'')+'</span></div>'}).join('')||'<p class="note">Nenhum passageiro.</p>';
+   box.querySelectorAll('[data-i]').forEach(function(b){b.onclick=function(){var i=view[+b.dataset.i];db.doc(i.ref).update({emb:!i.emb,embT:TS()})}});
+   box.querySelectorAll('[data-l]').forEach(function(b){b.onclick=function(){var i=view[+b.dataset.l];if(!confirm('Liberar a poltrona '+i.seat+' de '+i.nome+'? Ele(a) poderá escolher outra.'))return;var x=db.batch();x.delete(db.doc(base+'/ocupadas/'+i.seat));x.delete(db.doc(base+'/reservas/'+i.seat));if(i.h)x.update(db.doc(base+'/convidados/'+i.h),{seat:null});x.commit()}});
   }
   function draw(){
-   var by={};Object.keys(res).forEach(function(k){if(res[k].h)by[res[k].h]=k});
-   var ids=Object.keys(pas).sort(function(a,b){return pas[a].nome.localeCompare(pas[b].nome)});
-   var ok=ids.filter(function(h){return by[h]}).length;
-   var pl=ids.map(function(h){var p=pas[h];return '<div class="tr"><span>'+esc(p.nome)+'<br><span class="note">'+esc(p.tel)+'</span></span><span>'+(by[h]?'✅ poltrona '+by[h]:'⏳ aguardando')+'</span></div>'}).join('');
-   var man=Object.keys(res).filter(function(k){return !res[k].h}).map(function(k){return '<div class="tr"><span>'+esc(res[k].nome)+'<br><span class="note">'+esc(res[k].tel)+'</span></span><span>✅ poltrona '+k+'</span></div>'}).join('');
+   var L=items(),emb=L.filter(function(i){return i.emb}).length,sc=L.filter(function(i){return i.seat}).length;
+   var cm={};L.forEach(function(i){var c=i.cid||'Sem cidade';cm[c]=cm[c]||[0,0];cm[c][0]++;if(i.emb)cm[c][1]++});
+   var cities=Object.keys(cm).sort();
+   var cs=cities.map(function(c){return '<div class="tr"><span>'+esc(c)+'</span><span>'+cm[c][1]+' de '+cm[c][0]+' embarcaram</span></div>'}).join('');
    A.innerHTML='<p><a href="#" id="bk">← Voltar</a></p><h1>'+esc(v.nome)+'</h1><p class="sub">'+BUS[v.onibus].nome+'</p><div class="card">'+stats(v.onibus,occ)+mapHtml(v.onibus,occ,null)+'<p class="note">Toque numa livre para reservar manualmente; toque numa ocupada para liberar.</p></div>'+
-   '<div class="card"><h2>Importar lista de passageiros</h2><p class="note">Um por linha: nome;telefone. Só quem tem poltrona. O cliente digita o nome dele para escolher.</p><textarea id="ta" rows="5" placeholder="Maria da Silva;11999990000"></textarea><label>ou escolha um arquivo (.csv ou .txt)</label><input type="file" id="fl" accept=".csv,.txt,text/csv,text/plain"><button class="p" id="im">Importar</button><p class="note">'+esc(M)+'</p></div>'+
-   '<div class="card"><h2>Passageiros'+(ids.length?' · '+ok+' de '+ids.length+' escolheram':'')+'</h2>'+pl+man+'</div>';
+   '<div class="card"><h2>Embarque · '+emb+' de '+L.length+' embarcaram</h2>'+cs+'<label>Cidade</label><select id="fc"><option value="">Todas</option>'+cities.map(function(c){return '<option'+(c===FC?' selected':'')+'>'+esc(c)+'</option>'}).join('')+'</select><label>Situação</label><select id="fs"><option value="">Todos</option><option value="n"'+(FS==='n'?' selected':'')+'>Não embarcaram</option><option value="e"'+(FS==='e'?' selected':'')+'>Embarcaram</option></select><label>Buscar nome</label><input id="qs"><p class="note">'+sc+' de '+L.length+' já escolheram poltrona.</p><div id="pl"></div></div>'+
+   '<div class="card"><h2>Importar lista de passageiros</h2><p class="note">Um por linha: nome;telefone;cidade. Só quem tem poltrona. O cliente digita o nome dele para escolher.</p><textarea id="ta" rows="5" placeholder="Maria da Silva;11999990000;Itaúna"></textarea><label>ou escolha um arquivo (.csv ou .txt)</label><input type="file" id="fl" accept=".csv,.txt,text/csv,text/plain"><button class="p" id="im">Importar</button><p class="note">'+esc(M)+'</p></div>';
    var ta=document.getElementById('ta');ta.value=T;ta.oninput=function(){T=ta.value};
    document.getElementById('fl').onchange=function(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(){T=r.result;draw()};r.readAsText(f)};
    document.getElementById('im').onclick=imp;
+   var qs=document.getElementById('qs');qs.value=Q;qs.oninput=function(){Q=qs.value;paint()};
+   document.getElementById('fc').onchange=function(e){FC=e.target.value;paint()};
+   document.getElementById('fs').onchange=function(e){FS=e.target.value;paint()};
    document.getElementById('bk').onclick=function(e){e.preventDefault();listView()};
    A.querySelectorAll('.s').forEach(function(b){b.onclick=function(){var k=b.dataset.n;
     if(occ[k]){if(confirm('Liberar a poltrona '+k+'?')){var x=db.batch();x.delete(db.doc(base+'/ocupadas/'+k));x.delete(db.doc(base+'/reservas/'+k));if(res[k]&&res[k].h)x.update(db.doc(base+'/convidados/'+res[k].h),{seat:null});x.commit()}}
     else{var nome=prompt('Nome do passageiro na poltrona '+k+':');if(!nome)return;var y=db.batch();y.set(db.doc(base+'/ocupadas/'+k),{t:TS()});y.set(db.doc(base+'/reservas/'+k),{nome:nome,tel:'',t:TS()});y.commit()}}});
+   paint();
   }
   unsubs.push(db.collection(base+'/ocupadas').onSnapshot(function(s){occ={};s.forEach(function(x){occ[x.id]=1});draw()}));
   unsubs.push(db.collection(base+'/reservas').onSnapshot(function(s){res={};s.forEach(function(x){res[x.id]=x.data()});draw()}));
