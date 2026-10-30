@@ -20,8 +20,10 @@ button.sm{width:auto;padding:6px 10px;font-size:13px}
 .s.x{background:var(--sel);border-color:var(--sel);color:#fff}
 .w{aspect-ratio:2/1;grid-column:span 2;background:var(--wc);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px}
 .stats{display:flex;gap:8px;margin:8px 0}.stats div{flex:1;text-align:center;background:var(--bg);border-radius:8px;padding:8px}.stats b{display:block;font-size:20px}
-.tr{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+.tr{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
 .err{color:#dc2626;font-size:14px}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{border-bottom:1px solid var(--line);padding:6px 4px;text-align:left}
+@media print{.noprint{display:none!important}:root{--bg:#fff;--fg:#000;--card:#fff;--line:#999}body{padding:0}}
 </style></head><body>
 <div id="app">Carregando…</div>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-app-compat.js"></script>
@@ -58,6 +60,7 @@ function clientView(){
  db.doc(base).get().then(function(d){
   if(!d.exists){A.innerHTML='<div class="card">Viagem não encontrada. Peça um novo link à LS Tur.</div>';return}
   var v=d.data(),occ={},sel=null,msg='',who=null,nome='',done=0,ja=0,mine=[],F={n:'',t:''},first=true;
+  function closed(){return v.fechada||(v.limite&&new Date()>v.limite.toDate())}
   function head(){return '<h1>Escolha sua poltrona</h1><p class="sub">LS Tur Viagens e Turismo · '+esc(v.nome)+'</p>'}
   function minebox(){return mine.length?'<div class="card"><h2>Poltronas já escolhidas agora</h2>'+mine.map(function(m){return '<div class="tr"><span>'+esc(m.n)+'</span><b>poltrona '+m.s+'</b></div>'}).join('')+'</div>':''}
   function again(){who=null;nome='';sel=null;done=0;ja=0;msg='';F.n='';draw()}
@@ -70,8 +73,9 @@ function clientView(){
    if(ja){
     A.innerHTML=head()+'<div class="card"><h2>Você já escolheu a poltrona '+ja+'</h2><p><b>'+esc(nome)+'</b>: poltrona <b>'+ja+'</b> ('+desc(v.onibus,ja)+'). Ela está marcada em verde no mapa. Para trocar, fale com a LS Tur.</p>'+mapHtml(v.onibus,occ,ja)+'<button class="p" id="ot">Pesquisar outro passageiro</button></div>'+minebox();
     document.getElementById('ot').onclick=again;return}
+   if(closed()&&!v.lista){A.innerHTML=head()+'<div class="card"><h2>🔒 Escolha encerrada</h2><p>A escolha de poltronas desta viagem foi encerrada. Fale com a LS Tur.</p></div>';return}
    if(v.lista&&!who){
-    A.innerHTML=head()+'<div class="card"><label>Digite o nome completo do passageiro</label><input id="nm" autocomplete="off"><button class="p" id="vf">Continuar</button><p class="err">'+msg+'</p><p class="note">Pode escolher a poltrona de cada pessoa do seu grupo, uma de cada vez. Digite o nome completo, como no cadastro.</p></div>'+minebox();
+    A.innerHTML=head()+'<div class="card">'+(closed()?'<p class="err">🔒 Escolha encerrada. Você ainda pode consultar a sua poltrona.</p>':'')+'<label>Digite o nome completo do passageiro</label><input id="nm" autocomplete="off"><button class="p" id="vf">Continuar</button><p class="err">'+msg+'</p><p class="note">Pode escolher a poltrona de cada pessoa do seu grupo, uma de cada vez. Digite o nome completo, como no cadastro.</p></div>'+minebox();
     var n1=document.getElementById('nm');n1.value=F.n;n1.oninput=function(){F.n=n1.value};
     n1.onkeydown=function(e){if(e.key==='Enter')document.getElementById('vf').click()};
     document.getElementById('vf').onclick=function(){
@@ -80,7 +84,7 @@ function clientView(){
       if(!g.exists){msg='Não encontramos esse nome. Confira se digitou o nome completo, como no cadastro, ou fale com a LS Tur.';draw();return}
       nome=F.n.trim();
       if(g.data().seat){ja=+g.data().seat;draw();return}
-      who=h;msg='';draw()})}).catch(function(){msg='Erro ao verificar. Tente novamente.';draw()});
+      if(closed()){msg='A escolha de poltronas foi encerrada. Fale com a LS Tur.';draw();return}who=h;msg='';draw()})}).catch(function(){msg='Erro ao verificar. Tente novamente.';draw()});
     };
     return}
    var free=total(v.onibus)-Object.keys(occ).length;
@@ -95,7 +99,7 @@ function clientView(){
     bt.set(db.doc(base+'/ocupadas/'+sel),who?{t:TS(),h:who}:{t:TS()});
     if(who){bt.update(db.doc(base+'/convidados/'+who),{seat:String(sel),t:TS()});bt.set(db.doc(base+'/reservas/'+sel),{h:who,nome:nm,t:TS()})}
     else bt.set(db.doc(base+'/reservas/'+sel),{nome:nm,tel:F.t.trim(),t:TS()});
-    bt.commit().then(function(){nome=nm;mine.push({n:nm,s:sel});done=sel;draw()}).catch(function(){msg='Essa poltrona acabou de ser reservada. Escolha outra.';sel=null;draw()});
+    bt.commit().then(function(){nome=nm;mine.push({n:nm,s:sel});done=sel;draw()}).catch(function(){msg='Não foi possível reservar essa poltrona: ela pode ter acabado de ser reservada, ou a escolha foi encerrada. Escolha outra ou fale com a LS Tur.';sel=null;draw()});
    };
   }
   unsubs.push(db.collection(base+'/ocupadas').onSnapshot(function(s){occ={};s.forEach(function(x){occ[x.id]=1});if(sel&&occ[sel])sel=null;if(first||who||!v.lista||done||ja)draw();first=false}));
@@ -105,6 +109,14 @@ function clientView(){
 /* ---------- ADMIN ---------- */
 function loginView(m){A.innerHTML='<h1>LS Tur · Poltronas</h1><div class="card"><label>E-mail</label><input id="em" type="email"><label>Senha</label><input id="pw" type="password"><button class="p" id="li">Entrar</button><p class="err">'+(m||'')+'</p></div>';
  document.getElementById('li').onclick=function(){auth.signInWithEmailAndPassword(document.getElementById('em').value,document.getElementById('pw').value).catch(function(){loginView('E-mail ou senha incorretos.')})}}
+function delTrip(id,nome){
+ if(prompt('Para excluir a viagem "'+nome+'" e TODAS as reservas dela, digite EXCLUIR:')!=='EXCLUIR')return;
+ var base='poltronas_viagens/'+id,subs=['ocupadas','reservas','convidados','passageiros'];
+ Promise.all(subs.map(function(c){return db.collection(base+'/'+c).get()})).then(function(qs){
+  var refs=[];qs.forEach(function(q){q.forEach(function(x){refs.push(x.ref)})});refs.push(db.doc(base));
+  var jobs=[];for(var i=0;i<refs.length;i+=400){var b=db.batch();refs.slice(i,i+400).forEach(function(r){b.delete(r)});jobs.push(b.commit())}
+  return Promise.all(jobs)}).catch(function(){alert('Erro ao excluir. Tente novamente.')});
+}
 function listView(){clear();
  var opts=Object.keys(BUS).map(function(k){return '<option value="'+k+'">'+BUS[k].nome+'</option>'}).join('');
  A.innerHTML='<h1>Viagens</h1><p class="sub"><a href="#" id="out">Sair</a></p><div class="card"><h2>Nova viagem</h2><label>Nome da viagem</label><input id="nn" placeholder="Ex.: Beto Carrero 12/12"><label>Ônibus</label><select id="nb">'+opts+'</select><button class="p" id="nv">Criar viagem</button></div><div id="tl"></div>';
@@ -112,17 +124,18 @@ function listView(){clear();
  document.getElementById('nv').onclick=function(){var n=document.getElementById('nn').value.trim();if(!n)return;db.collection('poltronas_viagens').add({nome:n,onibus:document.getElementById('nb').value,t:TS()});document.getElementById('nn').value=''};
  unsubs.push(db.collection('poltronas_viagens').orderBy('t','desc').onSnapshot(function(s){var box=document.getElementById('tl');box.innerHTML='';
   s.forEach(function(d){var v=d.data(),c=document.createElement('div');c.className='card';var link=location.origin+location.pathname+'?v='+d.id;
-   c.innerHTML='<h2>'+esc(v.nome)+'</h2><p class="sub">'+BUS[v.onibus].nome+'</p><div class="stats" id="st'+d.id+'"></div><button class="sm" data-c="'+link+'">Copiar link do cliente</button> <button class="sm" data-o="'+d.id+'">Abrir</button>';
+   c.innerHTML='<h2>'+esc(v.nome)+'</h2><p class="sub">'+BUS[v.onibus].nome+'</p><div class="stats" id="st'+d.id+'"></div><button class="sm" data-c="'+link+'">Copiar link do cliente</button> <button class="sm" data-o="'+d.id+'">Abrir</button> <button class="sm" data-d="'+d.id+'" data-n="'+esc(v.nome)+'">Excluir</button>';
    box.appendChild(c);
    db.collection('poltronas_viagens/'+d.id+'/ocupadas').onSnapshot(function(q){var o=q.size,t=total(v.onibus),el=document.getElementById('st'+d.id);if(el)el.innerHTML='<div><b>'+o+'</b>ocupadas</div><div><b>'+(t-o)+'</b>livres</div><div><b>'+t+'</b>total</div>'});
   });
   box.querySelectorAll('[data-c]').forEach(function(b){b.onclick=function(){navigator.clipboard.writeText(b.dataset.c);b.textContent='Copiado ✓'}});
   box.querySelectorAll('[data-o]').forEach(function(b){b.onclick=function(){tripView(b.dataset.o)}});
+  box.querySelectorAll('[data-d]').forEach(function(b){b.onclick=function(){delTrip(b.dataset.d,b.dataset.n)}});
  }));}
 function tripView(id){clear();
  var base='poltronas_viagens/'+id;
  db.doc(base).get().then(function(d){
-  var v=d.data(),occ={},res={},pas={},T='',M='',Q='',FC='',FS='',view=[];
+  var v=d.data(),occ={},res={},pas={},T='',M='',Q='',FC='',FS='',view=[],LV=false;
   function imp(){
    var skip=/^(colo|sem poltrona|n[aã]o)$/i;
    var rows=T.split(/\r?\n/).map(function(l){return l.split(/[;\t,]/).map(function(x){return x.trim().replace(/^"|"$/g,'')})}).filter(function(c){return c[0]});
@@ -145,21 +158,33 @@ function tripView(id){clear();
    Object.keys(res).forEach(function(k){var r=res[k];if(!r.h)L.push({nome:r.nome,tel:r.tel||'',cid:r.cidade||'',seat:k,emb:!!r.emb,h:'',ref:base+'/reservas/'+k})});
    return L.sort(function(a,b){return a.nome.localeCompare(b.nome)});
   }
+  function lista(){
+   var L=items(),com=L.filter(function(i){return i.seat}).sort(function(a,b){return a.seat-b.seat}),sem=L.filter(function(i){return !i.seat}),colo=v.colo||0,tot=L.length+colo;
+   function tr(i){return '<tr><td><b>'+(i.seat||'—')+'</b></td><td>'+esc(i.nome)+'</td><td>'+esc(i.cid)+'</td><td>'+esc(i.tel)+'</td></tr>'}
+   A.innerHTML='<div class="noprint"><p><a href="#" id="bk2">← Voltar</a></p></div><h1>Lista de embarque</h1><p class="sub">'+esc(v.nome)+' · '+BUS[v.onibus].nome+'</p><p><b>Total de pessoas: '+tot+'</b><br>Poltronas ocupadas: '+com.length+' · Crianças de colo: '+colo+(sem.length?' · Sem poltrona escolhida: '+sem.length:'')+'</p><table><tr><th>Poltrona</th><th>Nome</th><th>Cidade</th><th>Telefone</th></tr>'+com.concat(sem).map(tr).join('')+'</table><div class="noprint card" style="margin-top:14px"><label>Crianças de colo (sem poltrona)</label><input type="number" min="0" id="co" value="'+colo+'"><button class="p" id="cp">Copiar texto</button><button id="pr" style="margin-top:8px">Imprimir / salvar PDF</button></div>';
+   document.getElementById('bk2').onclick=function(e){e.preventDefault();LV=false;draw()};
+   document.getElementById('co').onchange=function(e){v.colo=Math.max(0,parseInt(e.target.value,10)||0);db.doc(base).update({colo:v.colo}).then(draw)};
+   document.getElementById('pr').onclick=function(){window.print()};
+   document.getElementById('cp').onclick=function(){var t='LISTA DE EMBARQUE - '+v.nome+'\n'+BUS[v.onibus].nome+'\n\n'+com.map(function(i){return i.seat+' - '+i.nome+(i.cid?' ('+i.cid+')':'')+(i.tel?' - '+i.tel:'')}).join('\n')+(sem.length?'\n\nSem poltrona escolhida:\n'+sem.map(function(i){return i.nome+(i.cid?' ('+i.cid+')':'')}).join('\n'):'')+'\n\nTotal de pessoas: '+tot+'\nPoltronas ocupadas: '+com.length+'\nCriancas de colo: '+colo;navigator.clipboard.writeText(t);this.textContent='Copiado ✓'};
+  }
+  function lim(){if(!v.limite)return '';var d=v.limite.toDate();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)}
   function paint(){
    var L=items(),box=document.getElementById('pl');if(!box)return;
    var q=norm(Q);
    view=L.filter(function(i){return (!FC||(i.cid||'Sem cidade')===FC)&&(!FS||(FS==='e'?i.emb:!i.emb))&&(!q||norm(i.nome).indexOf(q)>-1)});
-   box.innerHTML=view.map(function(i,n){return '<div class="tr"><span>'+esc(i.nome)+'<br><span class="note">'+esc(i.cid||'sem cidade')+(i.seat?' · poltrona '+i.seat:' · sem poltrona')+(i.tel?' · '+esc(i.tel):'')+'</span></span><span><button class="sm" data-i="'+n+'">'+(i.emb?'✅ Embarcou':'Marcar')+'</button>'+(i.seat?' <button class="sm" data-l="'+n+'">Liberar poltrona</button>':'')+'</span></div>'}).join('')||'<p class="note">Nenhum passageiro.</p>';
+   box.innerHTML=view.map(function(i,n){return '<div class="tr"><span>'+esc(i.nome)+'<br><span class="note">'+esc(i.cid||'sem cidade')+(i.seat?' · poltrona '+i.seat:' · sem poltrona')+(i.tel?' · '+esc(i.tel):'')+'</span></span><span><button class="sm" data-i="'+n+'">'+(i.emb?'✅ Embarcou':'Marcar')+'</button>'+(i.seat?' <button class="sm" data-l="'+n+'">Liberar poltrona</button>':'')+(!i.seat&&i.tel?' <button class="sm" data-w="'+n+'">Cobrar</button>':'')+'</span></div>'}).join('')||'<p class="note">Nenhum passageiro.</p>';
    box.querySelectorAll('[data-i]').forEach(function(b){b.onclick=function(){var i=view[+b.dataset.i];db.doc(i.ref).update({emb:!i.emb,embT:TS()})}});
    box.querySelectorAll('[data-l]').forEach(function(b){b.onclick=function(){var i=view[+b.dataset.l];if(!confirm('Liberar a poltrona '+i.seat+' de '+i.nome+'? Ele(a) poderá escolher outra.'))return;var x=db.batch();x.delete(db.doc(base+'/ocupadas/'+i.seat));x.delete(db.doc(base+'/reservas/'+i.seat));if(i.h)x.update(db.doc(base+'/convidados/'+i.h),{seat:null});x.commit()}});
+   box.querySelectorAll('[data-w]').forEach(function(b){b.onclick=function(){var i=view[+b.dataset.w],t=i.tel.replace(/\D/g,'');if(t.length<=11)t='55'+t;var link=location.origin+location.pathname+'?v='+id;window.open('https://wa.me/'+t+'?text='+encodeURIComponent('Olá, '+i.nome.split(' ')[0]+'! Escolha a sua poltrona na viagem '+v.nome+' pelo link: '+link+' (digite seu nome completo). Qualquer dúvida, é só chamar!'))}});
   }
   function draw(){
+   if(LV){lista();return}
    var L=items(),emb=L.filter(function(i){return i.emb}).length,sc=L.filter(function(i){return i.seat}).length;
    var cm={};L.forEach(function(i){var c=i.cid||'Sem cidade';cm[c]=cm[c]||[0,0];cm[c][0]++;if(i.emb)cm[c][1]++});
    var cities=Object.keys(cm).sort();
    var cs=cities.map(function(c){return '<div class="tr"><span>'+esc(c)+'</span><span>'+cm[c][1]+' de '+cm[c][0]+' embarcaram</span></div>'}).join('');
    A.innerHTML='<p><a href="#" id="bk">← Voltar</a></p><h1>'+esc(v.nome)+'</h1><p class="sub">'+BUS[v.onibus].nome+'</p><div class="card">'+stats(v.onibus,occ)+mapHtml(v.onibus,occ,null)+'<p class="note">Toque numa livre para reservar manualmente; toque numa ocupada para liberar.</p></div>'+
-   '<div class="card"><h2>Embarque · '+emb+' de '+L.length+' embarcaram</h2>'+cs+'<label>Cidade</label><select id="fc"><option value="">Todas</option>'+cities.map(function(c){return '<option'+(c===FC?' selected':'')+'>'+esc(c)+'</option>'}).join('')+'</select><label>Situação</label><select id="fs"><option value="">Todos</option><option value="n"'+(FS==='n'?' selected':'')+'>Não embarcaram</option><option value="e"'+(FS==='e'?' selected':'')+'>Embarcaram</option></select><label>Buscar nome</label><input id="qs"><p class="note">'+sc+' de '+L.length+' já escolheram poltrona.</p><div id="pl"></div></div>'+
+   '<div class="card"><h2>Escolha de poltronas · '+((v.fechada||(v.limite&&new Date()>v.limite.toDate()))?'🔒 encerrada':'🟢 aberta')+'</h2><button class="p" id="fc2">'+(v.fechada?'Reabrir escolha':'Encerrar escolha agora')+'</button><label>Prazo (opcional, até o fim do dia)</label><input type="date" id="dl" value="'+lim()+'"><button id="sd" style="margin-top:8px">Salvar prazo</button><p class="note">Apague a data e salve para remover o prazo.</p></div>'+'<div class="card"><h2>Embarque · '+emb+' de '+L.length+' embarcaram</h2><button class="sm" id="lb">Lista de embarque (imprimir / copiar)</button>'+cs+'<label>Cidade</label><select id="fc"><option value="">Todas</option>'+cities.map(function(c){return '<option'+(c===FC?' selected':'')+'>'+esc(c)+'</option>'}).join('')+'</select><label>Situação</label><select id="fs"><option value="">Todos</option><option value="n"'+(FS==='n'?' selected':'')+'>Não embarcaram</option><option value="e"'+(FS==='e'?' selected':'')+'>Embarcaram</option></select><label>Buscar nome</label><input id="qs"><p class="note">'+sc+' de '+L.length+' já escolheram poltrona.</p><div id="pl"></div></div>'+
    '<div class="card"><h2>Importar lista de passageiros</h2><p class="note">Um por linha: nome;telefone;cidade. Só quem tem poltrona. O cliente digita o nome dele para escolher.</p><textarea id="ta" rows="5" placeholder="Maria da Silva;11999990000;Itaúna"></textarea><label>ou escolha um arquivo (.csv ou .txt)</label><input type="file" id="fl" accept=".csv,.txt,text/csv,text/plain"><button class="p" id="im">Importar</button><p class="note">'+esc(M)+'</p></div>';
    var ta=document.getElementById('ta');ta.value=T;ta.oninput=function(){T=ta.value};
    document.getElementById('fl').onchange=function(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(){T=r.result;draw()};r.readAsText(f)};
@@ -168,6 +193,9 @@ function tripView(id){clear();
    document.getElementById('fc').onchange=function(e){FC=e.target.value;paint()};
    document.getElementById('fs').onchange=function(e){FS=e.target.value;paint()};
    document.getElementById('bk').onclick=function(e){e.preventDefault();listView()};
+   document.getElementById('lb').onclick=function(){LV=true;draw()};
+   document.getElementById('fc2').onclick=function(){v.fechada=!v.fechada;db.doc(base).update({fechada:v.fechada}).then(draw)};
+   document.getElementById('sd').onclick=function(){var x=document.getElementById('dl').value,ts=x?firebase.firestore.Timestamp.fromDate(new Date(x+'T23:59:59')):null;db.doc(base).update({limite:ts}).then(function(){v.limite=ts;draw()})};
    A.querySelectorAll('.s').forEach(function(b){b.onclick=function(){var k=b.dataset.n;
     if(occ[k]){if(confirm('Liberar a poltrona '+k+'?')){var x=db.batch();x.delete(db.doc(base+'/ocupadas/'+k));x.delete(db.doc(base+'/reservas/'+k));if(res[k]&&res[k].h)x.update(db.doc(base+'/convidados/'+res[k].h),{seat:null});x.commit()}}
     else{var nome=prompt('Nome do passageiro na poltrona '+k+':');if(!nome)return;var y=db.batch();y.set(db.doc(base+'/ocupadas/'+k),{t:TS()});y.set(db.doc(base+'/reservas/'+k),{nome:nome,tel:'',t:TS()});y.commit()}}});
